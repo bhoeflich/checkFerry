@@ -4,24 +4,27 @@ Automatische Überwachung der Fährverfügbarkeit auf [meinefaehre.faehre.de](ht
 
 ## ✨ Features
 
-- 🔄 **Automatische Überwachung** – Prüft alle 5 Minuten auf Verfügbarkeit
+- 🔄 **Automatische Überwachung** – Prüft kontinuierlich auf Verfügbarkeit
 - 📅 **Mehrere Daten** – Überwacht beliebig viele Wunschtermine gleichzeitig
-- 🚗 **Fahrzeug-Filter** – Ignoriert reine Personenfähren ("Nur Personen")
+- ⏰ **Zeitfilter** – Nur Verbindungen in einem bestimmten Zeitraum
+- 🚗 **Fahrzeug-Filter** – Ignoriert reine Personenfähren
+- 🛣️ **Flexible Routen** – Beliebige Start- und Zielhäfen konfigurierbar
 - 📱 **Push-Benachrichtigungen** – Sofortige Benachrichtigung via ntfy.sh
 - 🐳 **Docker-Ready** – Einfaches Deployment als Container
+- 🔧 **Programmierbare API** – `FerryService` als wiederverwendbares Modul
 
 ## 📋 Voraussetzungen
+
+### Docker (Empfohlen)
+- Docker Desktop oder Docker Engine
 
 ### Lokal
 - Python 3.10+
 - Playwright mit Chromium-Browser
 
+## 🚀 Schnellstart
+
 ### Docker
-- Docker Desktop oder Docker Engine
-
-## 🚀 Installation
-
-### Option 1: Docker (Empfohlen)
 
 ```bash
 # Image bauen
@@ -35,85 +38,124 @@ docker run -d \
   ferry-checker
 ```
 
-### Option 2: Lokale Installation
+### Lokal
 
 ```bash
-# 1. Dependencies installieren
 pip install -r requirements.txt
-
-# 2. Playwright Browser installieren
 playwright install chromium
 
-# 3. Umgebungsvariablen setzen
-export TARGET_DATES="2026-01-02,2026-01-03"
+export TARGET_DATES="2026-01-02"
 export NTFY_TOPIC="mein-faehren-topic"
-
-# 4. Skript starten
 python main.py
 ```
 
 ## ⚙️ Konfiguration
 
-| Variable | Beschreibung | Beispiel |
-|----------|--------------|----------|
-| `TARGET_DATES` | Komma-separierte Liste der zu prüfenden Daten (YYYY-MM-DD) | `2026-01-02,2026-01-03` |
-| `NTFY_TOPIC` | Dein eindeutiger ntfy.sh Topic-Name | `mein-faehren-topic` |
+| Variable | Beschreibung | Standard | Beispiel |
+|----------|--------------|----------|----------|
+| `TARGET_DATES` | Zu prüfende Daten (YYYY-MM-DD) | `2026-01-02` | `2026-01-02,2026-01-03` |
+| `NTFY_TOPIC` | ntfy.sh Topic-Name | - | `mein-faehren-topic` |
+| `DEPARTURE` | Abfahrtshafen-Code | `DEWYK` | `DEDAG` |
+| `ARRIVAL` | Zielhafen-Code | `DEDAG` | `DEWYK` |
+| `TIME_FROM` | Früheste Abfahrt | - | `08:00` |
+| `TIME_TO` | Späteste Abfahrt | - | `18:00` |
+| `CHECK_INTERVAL` | Prüfintervall (Sekunden) | `300` | `600` |
 
-### Route
+### Hafencodes
 
-Aktuell ist die Route fest auf **Wyk (Föhr) → Dagebüll** eingestellt:
-- Abfahrt: `DEWYK` (Wyk auf Föhr)
-- Ankunft: `DEDAG` (Dagebüll)
+| Code | Hafen |
+|------|-------|
+| `DEWYK` | Wyk (Föhr) |
+| `DEDAG` | Dagebüll |
+| `DEWIT` | Wittdün (Amrum) |
+| `DENOR` | Nordstrand |
+| `DEPEL` | Pellworm |
+| `DESCH` | Schlüttsiel |
 
-Die Route kann in `main.py` unter `DEPARTURE` und `ARRIVAL` angepasst werden.
+## 🔧 FerryService API
 
-## 📱 Benachrichtigungen einrichten
+Das Modul `ferry_service.py` kann auch direkt in Python verwendet werden:
 
-1. Installiere die [ntfy App](https://ntfy.sh/) auf deinem Smartphone
-2. Abonniere deinen gewählten Topic-Namen (z.B. `mein-faehren-topic`)
-3. Setze `NTFY_TOPIC` auf denselben Namen
+```python
+from ferry_service import check_ferry_availability, FerryService
 
-Bei Fund einer verfügbaren Verbindung erhältst du eine Push-Benachrichtigung mit direktem Link zur Buchung.
+# Einfache Funktion
+connections = check_ferry_availability(
+    departure="DEWYK",
+    arrival="DEDAG",
+    dates=["2026-01-02", "2026-01-03"],
+    time_from="08:00",
+    time_to="18:00"
+)
 
-## 🔧 Docker-Befehle
+for conn in connections:
+    print(f"{conn.date} {conn.departure_time}: {conn.booking_url}")
+
+# Oder mit Service-Klasse für mehr Kontrolle
+service = FerryService(headless=True)
+all_connections = service.query(
+    departure="DEDAG",
+    arrival="DEWYK",
+    dates=["2026-01-02"],
+    only_available=False,  # Alle Verbindungen
+    exclude_only_persons=True
+)
+```
+
+### FerryConnection Objekt
+
+```python
+@dataclass
+class FerryConnection:
+    date: str              # "2026-01-02"
+    departure_time: str    # "08:30"
+    arrival_time: str      # "09:15"
+    departure_harbor: str  # "DEWYK"
+    arrival_harbor: str    # "DEDAG"
+    available: bool        # True/False
+    only_persons: bool     # True wenn "Nur Personen"
+    booking_url: str       # Link zur Buchung
+    raw_text: str          # Roher Text der Verbindung
+```
+
+## 📱 Benachrichtigungen
+
+1. [ntfy App](https://ntfy.sh/) installieren
+2. Topic abonnieren (z.B. `mein-faehren-topic`)
+3. `NTFY_TOPIC` setzen
+
+## 🐳 Docker-Befehle
 
 ```bash
-# Container im Hintergrund starten
+# Mit allen Optionen starten
 docker run -d --name ferry-checker \
-  -e TARGET_DATES="2026-01-02" \
+  -e TARGET_DATES="2026-01-02,2026-01-03" \
+  -e DEPARTURE="DEDAG" \
+  -e ARRIVAL="DEWYK" \
+  -e TIME_FROM="08:00" \
+  -e TIME_TO="18:00" \
   -e NTFY_TOPIC="mein-topic" \
+  -e CHECK_INTERVAL="600" \
   ferry-checker
 
 # Logs anzeigen
 docker logs -f ferry-checker
 
-# Container stoppen
-docker stop ferry-checker
-
-# Container entfernen
-docker rm ferry-checker
+# Stoppen & Entfernen
+docker stop ferry-checker && docker rm ferry-checker
 ```
 
 ## 📁 Projektstruktur
 
 ```
 checkFerry/
-├── main.py           # Hauptskript
+├── ferry_service.py  # FerryService API-Modul
+├── main.py           # Hauptskript mit Monitoring-Loop
 ├── requirements.txt  # Python-Abhängigkeiten
-├── Dockerfile        # Docker-Konfiguration
-├── .dockerignore     # Ausschlüsse für Docker-Build
-└── README.md         # Diese Datei
+├── Dockerfile
+├── .dockerignore
+└── README.md
 ```
-
-## 🛠️ Funktionsweise
-
-1. Das Skript startet einen headless Chromium-Browser via Playwright
-2. Es ruft die Fahrplanseite für jeden konfigurierten Tag auf
-3. Alle Verbindungen werden analysiert:
-   - ✅ Verfügbar: "Auswählen"-Button vorhanden
-   - ❌ Ignoriert: "Nur Personen" Verbindungen
-4. Bei Treffer: Push-Benachrichtigung + Skript beendet sich
-5. Bei keinem Treffer: 5 Minuten warten, dann erneut prüfen
 
 ## 📄 Lizenz
 

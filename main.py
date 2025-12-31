@@ -1,20 +1,35 @@
+"""
+Ferry Checker - Main Application
+================================
+Monitors ferry availability and sends notifications via ntfy.sh
+"""
+
 import os
 import time
-import requests
 from datetime import datetime
-from playwright.sync_api import sync_playwright
 
-# Configuration
-# Ensure these environment variables are set
+import requests
+from ferry_service import FerryService, check_ferry_availability, HARBORS
+
+
+# Configuration from environment variables
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC")
 TARGET_DATES_STR = os.environ.get("TARGET_DATES", "2026-01-02")
 TARGET_DATES = [d.strip() for d in TARGET_DATES_STR.split(",") if d.strip()]
 
-BASE_URL = "https://meinefaehre.faehre.de/fahrplanauskunft"
-DEPARTURE = "DEWYK"
-ARRIVAL = "DEDAG"
+# Route configuration
+DEPARTURE = os.environ.get("DEPARTURE", "DEWYK")
+ARRIVAL = os.environ.get("ARRIVAL", "DEDAG")
 
-def send_notification(message):
+# Time range filter (optional)
+TIME_FROM = os.environ.get("TIME_FROM")  # e.g., "08:00"
+TIME_TO = os.environ.get("TIME_TO")      # e.g., "18:00"
+
+# Check interval in seconds (default: 5 minutes)
+CHECK_INTERVAL = int(os.environ.get("CHECK_INTERVAL", "300"))
+
+
+def send_notification(message: str) -> None:
     """Sends a push notification using ntfy.sh."""
     if not NTFY_TOPIC:
         print("NTFY_TOPIC not set. Skipping notification.")
@@ -31,78 +46,59 @@ def send_notification(message):
     except Exception as e:
         print(f"Failed to send notification: {e}")
 
-def check_ferry(date):
-    """Checks the ferry website for availability on a specific date."""
-    url = f"{BASE_URL}?departure_harbor={DEPARTURE}&arrival_harbor={ARRIVAL}&date={date}"
-    
-    with sync_playwright() as p:
-        # Launch browser (headless=True for background execution)
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        page = context.new_page()
-        
-        print(f"Checking {date}...")
-        
-        try:
-            page.goto(url, timeout=60000)
-            
-            # Wait for the schedule to load.
-            try:
-                page.wait_for_selector(".time.list-record", state="attached", timeout=30000)
-            except Exception:
-                print(f"  [{date}] No connections found or timeout.")
-                return False
-
-            connections = page.query_selector_all(".time.list-record")
-            print(f"  [{date}] Found {len(connections)} connections.")
-
-            for conn in connections:
-                text = conn.inner_text()
-                
-                button = conn.query_selector("button.btn-red")
-                has_button = button is not None and button.is_visible()
-                
-                is_only_persons = "nur personen" in text.lower()
-                has_select_text = "AUSWÄHLEN" in text.upper()
-
-                if (has_button or has_select_text) and not is_only_persons:
-                    print(f"  [{date}] SUCCESS: Available connection found! {text.replace(chr(10), ' ')}")
-                    return url
-            
-            return False
-
-        except Exception as e:
-            print(f"  [{date}] Error: {e}")
-            return False
-        finally:
-            browser.close()
 
 def main():
-    print("Starting Ferry Checker App...")
+    """Main loop for continuous ferry checking."""
+    print("=" * 50)
+    print("🚢 Starting Ferry Checker App...")
+    print("=" * 50)
+    print(f"Route: {HARBORS.get(DEPARTURE, DEPARTURE)} → {HARBORS.get(ARRIVAL, ARRIVAL)}")
     print(f"Target Dates: {TARGET_DATES}")
+    if TIME_FROM or TIME_TO:
+        print(f"Time Filter: {TIME_FROM or '00:00'} - {TIME_TO or '23:59'}")
     if not NTFY_TOPIC:
-        print("WARNING: NTFY_TOPIC is not set. Notifications will not be sent.")
+        print("⚠️  WARNING: NTFY_TOPIC is not set. Notifications will not be sent.")
+    print(f"Check Interval: {CHECK_INTERVAL} seconds")
     print("Press Ctrl+C to stop.")
+    print("=" * 50)
+    
+    service = FerryService()
     
     while True:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"\n[{timestamp}] Starting check cycle...")
         
-        found_any = False
+        try:
+            connections = service.find_available(
+                departure=DEPARTURE,
+                arrival=ARRIVAL,
+                dates=TARGET_DATES,
+                time_from=TIME_FROM,
+                time_to=TIME_TO,
+            )
+            
+            if connections:
+                conn = connections[0]
+                message = (
+                    f"🚢 Ferry Found!\n"
+                    f"Date: {conn.date}\n"
+                    f"Time: {conn.departure_time}\n"
+                    f"Link: {conn.booking_url}"
+                )
+                print(f"✅ SUCCESS: {len(connections)} connection(s) found!")
+                print(f"   First: {conn.date} at {conn.departure_time}")
+                send_notification(message)
+                print("Found a connection! Exiting.")
+                break
+            else:
+                print("❌ No available connections found.")
+                
+        except Exception as e:
+            print(f"⚠️ Error during check: {e}")
         
-        for date in TARGET_DATES:
-            result_url = check_ferry(date)
-            if result_url:
-                send_notification(f"Ferry Found on {date}! Link: {result_url}")
-                found_any = True
-                break # Exit dates loop
-        
-        if found_any:
-            print("Found a connection! Exiting.")
-            break
-        
-        print("Cycle match not found. Sleeping for 5 minutes...")
-        time.sleep(300)
+        print(f"Sleeping for {CHECK_INTERVAL} seconds...")
+        time.sleep(CHECK_INTERVAL)
+
 
 if __name__ == "__main__":
     main()
