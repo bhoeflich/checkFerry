@@ -62,8 +62,14 @@ def main():
     print("Press Ctrl+C to stop.")
     print("=" * 50)
     
-    # Send startup notification
-    send_notification("🚢 Ferry Checker gestartet! Überwache Verbindungen...")
+    # Send startup notification with details
+    time_info = f" ({TIME_FROM}-{TIME_TO})" if TIME_FROM or TIME_TO else ""
+    dates_str = ", ".join(TARGET_DATES)
+    send_notification(
+        f"🚢 Ferry Checker gestartet!\n"
+        f"📅 Tage: {dates_str}\n"
+        f"⏰ Zeitraum: {TIME_FROM or '00:00'} - {TIME_TO or '23:59'}"
+    )
     
     service = FerryService()
     
