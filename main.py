@@ -62,6 +62,9 @@ def main():
     print("Press Ctrl+C to stop.")
     print("=" * 50)
     
+    # Send startup notification
+    send_notification("🚢 Ferry Checker gestartet! Überwache Verbindungen...")
+    
     service = FerryService()
     
     while True:

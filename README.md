@@ -10,6 +10,7 @@ Automatische Überwachung der Fährverfügbarkeit auf [meinefaehre.faehre.de](ht
 - 🚗 **Fahrzeug-Filter** – Ignoriert reine Personenfähren
 - 🛣️ **Flexible Routen** – Beliebige Start- und Zielhäfen konfigurierbar
 - 📱 **Push-Benachrichtigungen** – Sofortige Benachrichtigung via ntfy.sh
+- 🚀 **Startup-Benachrichtigung** – Bestätigt erfolgreichen Start des Services
 - 🐳 **Docker-Ready** – Einfaches Deployment als Container
 - 🔧 **Programmierbare API** – `FerryService` als wiederverwendbares Modul
 
