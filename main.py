@@ -66,12 +66,13 @@ def main():
     time_info = f" ({TIME_FROM}-{TIME_TO})" if TIME_FROM or TIME_TO else ""
     dates_str = ", ".join(TARGET_DATES)
     send_notification(
-        f"🚢 Ferry Checker gestartet!\n"
-        f"📅 Tage: {dates_str}\n"
-        f"⏰ Zeitraum: {TIME_FROM or '00:00'} - {TIME_TO or '23:59'}"
+        f"🚢 Ferry Checker started!\n"
+        f"📅 Days: {dates_str}\n"
+        f"⏰ Time Period: {TIME_FROM or '00:00'} - {TIME_TO or '23:59'}"
     )
     
     service = FerryService()
+    notified_connections = set()
     
     while True:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -87,18 +88,25 @@ def main():
             )
             
             if connections:
-                conn = connections[0]
-                message = (
-                    f"🚢 Ferry Found!\n"
-                    f"Date: {conn.date}\n"
-                    f"Time: {conn.departure_time}\n"
-                    f"Link: {conn.booking_url}"
-                )
                 print(f"✅ SUCCESS: {len(connections)} connection(s) found!")
-                print(f"   First: {conn.date} at {conn.departure_time}")
-                send_notification(message)
-                print("Found a connection! Exiting.")
-                break
+                
+                for conn in connections:
+                    # Create unique identifier for the connection
+                    conn_id = (conn.date, conn.departure_time, conn.departure_harbor, conn.arrival_harbor)
+                    
+                    if conn_id not in notified_connections:
+                        message = (
+                            f"🚢 Ferry Found!\n"
+                            f"Date: {conn.date}\n"
+                            f"Time: {conn.departure_time}\n"
+                            f"Link: {conn.booking_url}"
+                        )
+                        print(f"   Existing connection found: {conn.date} at {conn.departure_time}")
+                        print("   -> Sending notification...")
+                        send_notification(message)
+                        notified_connections.add(conn_id)
+                    else:
+                        print(f"   Skipping already notified connection: {conn.date} at {conn.departure_time}")
             else:
                 print("❌ No available connections found.")
                 
