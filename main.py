@@ -6,6 +6,7 @@ Monitors ferry availability and sends notifications via ntfy.sh
 
 import os
 import time
+import argparse
 from datetime import datetime
 
 import requests
@@ -62,18 +63,60 @@ def main():
     print("Press Ctrl+C to stop.")
     print("=" * 50)
     
-    # Send startup notification with details
-    time_info = f" ({TIME_FROM}-{TIME_TO})" if TIME_FROM or TIME_TO else ""
-    dates_str = ", ".join(TARGET_DATES)
-    send_notification(
-        f"🚢 Ferry Checker started!\n"
-        f"📅 Days: {dates_str}\n"
-        f"⏰ Time Period: {TIME_FROM or '00:00'} - {TIME_TO or '23:59'}"
-    )
+    parser = argparse.ArgumentParser(description="Ferry Checker")
+    parser.add_argument("--export-json", help="Path to export available connections as JSON", default=None)
+    args = parser.parse_args()
+
+    # Send startup notification with details (only if not exporting)
+    if not args.export_json:
+        time_info = f" ({TIME_FROM}-{TIME_TO})" if TIME_FROM or TIME_TO else ""
+        dates_str = ", ".join(TARGET_DATES)
+        send_notification(
+            f"🚢 Ferry Checker started!\n"
+            f"📅 Days: {dates_str}\n"
+            f"⏰ Time Period: {TIME_FROM or '00:00'} - {TIME_TO or '23:59'}"
+        )
     
     service = FerryService()
     notified_connections = set()
     
+    # Single run mode for export
+    if args.export_json:
+        print(f"Running in export mode. Checking dates: {TARGET_DATES}")
+        try:
+            connections = service.find_available(
+                departure=DEPARTURE,
+                arrival=ARRIVAL,
+                dates=TARGET_DATES,
+                time_from=TIME_FROM,
+                time_to=TIME_TO,
+            )
+            
+            # Serialize
+            data = []
+            for conn in connections:
+                data.append({
+                    "date": conn.date,
+                    "departure_time": conn.departure_time,
+                    "arrival_time": conn.arrival_time,
+                    "departure_harbor": conn.departure_harbor,
+                    "arrival_harbor": conn.arrival_harbor,
+                    "booking_url": conn.booking_url,
+                    "available": conn.available
+                })
+            
+            import json
+            os.makedirs(os.path.dirname(args.export_json), exist_ok=True)
+            with open(args.export_json, 'w', encoding='utf-8') as f:
+                json.dump({"updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "connections": data}, f, indent=2)
+            
+            print(f"Exported {len(data)} connections to {args.export_json}")
+            return # Exit after one run
+            
+        except Exception as e:
+            print(f"Error during export: {e}")
+            return
+
     while True:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"\n[{timestamp}] Starting check cycle...")

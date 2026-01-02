@@ -1,0 +1,40 @@
+name: Update Ferry Data
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # Run every 30 minutes
+  workflow_dispatch:      # Allow manual trigger
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Run Ferry Checker Export
+        env:
+          TARGET_DATES: "2026-01-02,2026-01-03"  # Default dates or update via secret?
+          # NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }} # Optional if we want notifications too
+          DEPARTURE: "DEWYK"
+          ARRIVAL: "DEDAG"
+        run: python main.py --export-json docs/data.json
+
+      - name: Commit and Push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update ferry data [skip ci]"
+          file_pattern: docs/data.json
