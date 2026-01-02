@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Set environment variables (can be overridden at runtime)
+ENV PYTHONUNBUFFERED=1
 # ENV TARGET_DATES="2026-01-02,2026-01-03"
 # ENV NTFY_TOPIC="your_unique_topic_name"
 
